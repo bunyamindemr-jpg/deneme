@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barkod Okuma Uygulaması</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        
+        .camera-container {
+            position: relative;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        #video {
+            width: 100%;
+            max-width: 300px;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        
+        .result-container {
+            margin-top: 20px;
+        }
+        
+        .barcode-list {
+            list-style-type: none;
+            padding: 0;
+        }
+        
+        .barcode-item {
+            background-color: #e9f7fe;
+            border: 1px solid #b3e0ff;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Barkod Okuma Uygulaması</h1>
+        <form id="barcodeForm">
+            <div class="form-group">
+                <label for="customerName">Müşteri Adı:</label>
+                <input type="text" id="customerName" name="customerName" required>
+            </div>
+            
+            <div class="camera-container">
+                <video id="video" autoplay playsinline></video>
+            </div>
+            
+            <button type="button" id="startCamera">Kamerayı Başlat</button>
+            <button type="button" id="scanBarcode">Barkod Tara</button>
+            <button type="button" id="sendEmail">E-posta Gönder</button>
+        </form>
+        
+        <div class="result-container">
+            <h2>Taranan Barkodlar:</h2>
+            <ul id="barcodeList" class="barcode-list"></ul>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
