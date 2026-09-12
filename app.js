@@ -1,166 +1,124 @@
-// Global değişkenler
+// jsQR kütüphanesini yüklemek için CDN kullanıyoruz
+const script = document.createElement('script');
+script.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+document.head.appendChild(script);
+
 let video = document.getElementById('video');
 let canvas = document.createElement('canvas');
 let context = canvas.getContext('2d');
-let barcodeList = document.getElementById('barcodeList');
 let barcodes = [];
-let stream = null;
 let scanning = false;
+let qrCodeData = null;
 
-// DOM elementleri
-const startCameraBtn = document.getElementById('startCamera');
-const scanBarcodeBtn = document.getElementById('scanBarcode');
-const sendEmailBtn = document.getElementById('sendEmail');
-
-// Kamerayı başlat
+// Kamera erişimini başlat
 async function startCamera() {
     try {
-        // Kamera izni iste
-        stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { 
-                facingMode: "environment",
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            } 
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: 'environment' } 
         });
-        video.srcObject = stream;
-        startCameraBtn.textContent = 'Kamera Başlatıldı';
-        startCameraBtn.disabled = true;
-        scanBarcodeBtn.disabled = false;
         
-        // Kameranın yüklenmesini bekle
-        video.addEventListener('loadeddata', () => {
-            console.log("Kamera yüklendi");
-        });
+        video.srcObject = stream;
+        document.getElementById('status').textContent = 'Kamera aktif - Barkod taramaya hazır';
+        scanning = true;
+        scanFrame();
     } catch (err) {
-        console.error("Kamera erişimi sağlanamadı:", err);
-        alert("Kamera erişimi reddedildi. Lütfen izin verdiğinizden emin olun.\nHata: " + err.message);
+        console.error("Kamera erişimi hatası:", err);
+        document.getElementById('status').textContent = 'Kamera erişimi reddedildi. Lütfen izin verin.';
+        alert('Kameraya erişim için izin gerekiyor. Lütfen tarayıcı ayarlarından kamera erişimine izin verin.');
     }
 }
 
-// Barkod tarama
-function scanBarcode() {
-    if (!stream) {
-        alert("Lütfen önce kamerayı başlatın");
-        return;
-    }
-
-    // Video boyutlarını canvas'a ayarla
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+// Her frame'te barkod tarama
+function scanFrame() {
+    if (!scanning) return;
     
-    // Canvas'a video görüntüsünü çizer
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // Resmi imageData olarak al
-    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-    
-    try {
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        // Canvas boyutlarını ayarla
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        
+        // Videoyu canvas'a çiz
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        // Görüntüyü al
+        let imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        
         // jsQR ile barkod tarama
-        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        let code = jsQR(imageData.data, imageData.width, imageData.height, {
             inversionAttempts: "dontInvert",
         });
         
         if (code) {
-            // Eğer barkod bulunursa listeye ekle
-            addBarcodeToList(code.data);
-            console.log("Barkod bulundu:", code.data);
-            
-            // Taramayı durdur
-            scanning = false;
+            // Yeni barkod bulundu mu?
+            if (!barcodes.includes(code.data)) {
+                barcodes.push(code.data);
+                updateBarcodeList();
+                document.getElementById('status').textContent = 'Barkod bulundu: ' + code.data;
+                
+                // Gönder butonunu etkinleştir
+                document.getElementById('sendButton').disabled = false;
+            }
         } else {
-            alert("Barkod bulunamadı. Lütfen daha net bir şekilde okutun veya tekrar deneyin.");
-            console.log("Barkod bulunamadı");
+            document.getElementById('status').textContent = 'Kamera aktif - Barkod taramaya hazır';
         }
-    } catch (error) {
-        console.error("Tarama hatası:", error);
-        alert("Tarama sırasında hata oluştu: " + error.message);
     }
+    
+    requestAnimationFrame(scanFrame);
 }
 
-// Barkodu listeye ekle
-function addBarcodeToList(barcodeData) {
-    // Aynı barkodun tekrar eklenmesini önle
-    if (barcodes.includes(barcodeData)) {
-        console.log("Aynı barkod zaten kayıtlı:", barcodeData);
-        return;
-    }
+// Barkod listesini güncelle
+function updateBarcodeList() {
+    const barcodesElement = document.getElementById('barcodes');
+    barcodesElement.innerHTML = '';
     
-    barcodes.push(barcodeData);
-    
-    const li = document.createElement('li');
-    li.className = 'barcode-item';
-    li.textContent = barcodeData;
-    barcodeList.appendChild(li);
-    
-    console.log("Yeni barkod eklendi:", barcodeData);
+    barcodes.forEach(barcode => {
+        const li = document.createElement('li');
+        li.className = 'barcode-item';
+        li.textContent = barcode;
+        barcodesElement.appendChild(li);
+    });
 }
 
-// E-posta gönderme fonksiyonu
-async function sendEmail() {
-    const customerName = document.getElementById('customerName').value.trim();
+// E-posta gönderimi (simülasyon)
+function sendEmail() {
+    if (barcodes.length === 0) return;
     
-    if (!customerName) {
-        alert("Lütfen müşteri adını girin.");
-        return;
-    }
+    const customerName = document.getElementById('customerName').value || 'Bilinmeyen Müşteri';
     
-    if (barcodes.length === 0) {
-        alert("Lütfen en az bir barkod tarayın.");
-        return;
-    }
+    // Gerçek bir e-posta gönderme işlemi yerine, alert ile bilgilendirme
+    alert(`E-posta gönderiliyor...\n\nMüşteri: ${customerName}\nTaranan Barkodlar:\n${barcodes.join('\n')}`);
     
-    // E-posta gönderme işlemi (bu örnek bir simülasyon)
-    const emailContent = `
-Müşteri Adı: ${customerName}
-Taranan Barkodlar:
-${barcodes.join('\n')}
-`;
+    // Gerçek uygulamada burada bir API çağrısı olurdu:
+    /*
+    fetch('/send-email', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            customerName: customerName,
+            barcodes: barcodes
+        })
+    });
+    */
     
-    try {
-        // Gerçek e-posta gönderimi için backend servisi gerekebilir
-        alert("E-posta gönderme işlemi simüle edildi.\nGerçek uygulamada bu veriler bir backend tarafından e-posta olarak gönderilir.");
-        
-        console.log("Gönderilecek e-posta içeriği:");
-        console.log(emailContent);
-        
-        // Gönderilen barkodları sıfırla
-        barcodes = [];
-        barcodeList.innerHTML = '';
-        
-    } catch (error) {
-        console.error("E-posta gönderilirken hata oluştu:", error);
-        alert("E-posta gönderilirken bir hata oluştu.");
-    }
+    // Gönderildikten sonra listeyi temizle
+    barcodes = [];
+    updateBarcodeList();
+    document.getElementById('sendButton').disabled = true;
+    document.getElementById('status').textContent = 'E-posta gönderildi. Yeni barkodlar için taramaya devam ediliyor.';
 }
 
-// Otomatik tarama modu
-function startAutoScan() {
-    if (!scanning && stream) {
-        scanning = true;
-        scanBarcode();
-        
-        // 2 saniyede bir otomatik tarama yap
-        setTimeout(startAutoScan, 2000);
-    }
-}
-
-// Event listener'lar
-startCameraBtn.addEventListener('click', startCamera);
-scanBarcodeBtn.addEventListener('click', () => {
-    if (scanning) {
-        scanning = false;
-        scanBarcodeBtn.textContent = "Barkod Tara";
-    } else {
-        scanBarcode();
-    }
+// Sayfa yüklendiğinde çalıştır
+document.addEventListener('DOMContentLoaded', function() {
+    // Kamera başlat
+    startCamera();
+    
+    // Gönder butonuna tıklama olayı
+    document.getElementById('sendButton').addEventListener('click', sendEmail);
 });
-sendEmailBtn.addEventListener('click', sendEmail);
 
-// Başlangıçta tarama butonunu devre dışı bırak
-scanBarcodeBtn.disabled = true;
-
-// Kamera durumu değiştiğinde kontrol et
-video.addEventListener('play', () => {
-    console.log("Kamera oynatılıyor");
+// Sayfa yenilendiğinde veya kamera izni reddedildiğinde hata yönetimi
+window.addEventListener('error', function(e) {
+    console.error("Hata:", e.error);
 });
