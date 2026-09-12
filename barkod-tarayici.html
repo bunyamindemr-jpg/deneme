@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Barkod Toplama</title>
+<link rel="preconnect" href="https://cdnjs.cloudflare.com">
+<style>
+  @font-face {
+    font-family: 'Plex';
+    src: local('IBM Plex Sans');
+  }
+
+  :root{
+    --bg: #101317;
+    --panel: #171b20;
+    --panel-2: #1e232a;
+    --border: #2a3038;
+    --text: #e8ebee;
+    --text-dim: #8a929c;
+    --accent: #ff7a33;
+    --accent-dim: #7a3d1e;
+    --ok: #34c77b;
+    --err: #ff5c5c;
+    --mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+    --sans: 'IBM Plex Sans', -apple-system, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overscroll-behavior-y: contain;
+  }
+
+  #app {
+    max-width: 480px;
+    margin: 0 auto;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 0 0 96px 0;
+  }
+
+  header {
+    padding: 22px 20px 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  header .tag {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 0.02em;
+    margin: 0 0 6px 0;
+  }
+
+  header h1 {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+
+  section {
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  label.field-label {
+    display: block;
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+
+  input[type="text"] {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16px;
+    padding: 13px 14px;
+    border-radius: 8px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  input[type="text"]:focus {
+    border-color: var(--accent);
+  }
+
+  /* Camera viewfinder */
+  .scanner-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    background: #000;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+
+  video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  /* Horizontal target line: align a barcode with this line to have it read */
+  .target-wrap {
+    position: absolute;
+    left: 0; right: 0;
+    top: var(--line-pos, 50%);
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+
+  .target-line {
+    position: relative;
+    height: 2px;
+    margin: 0 6%;
+    background: linear-gradient(90deg, transparent, var(--accent) 12%, var(--accent) 88%, transparent);
+    box-shadow: 0 0 10px 1px rgba(255,122,51,0.9);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+
+  .target-line::before, .target-line::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    width: 10px; height: 10px;
+    margin-top: -5px;
+    border-top: 2px solid var(--accent);
+    border-left: 2px solid var(--accent);
+  }
+  .target-line::before { left: -2px; transform: rotate(-45deg); }
+  .target-line::after  { right: -2px; transform: rotate(135deg); }
+
+  .target-hit {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%) scale(1);
+    width: 46px; height: 46px;
+    border-radius: 50%;
+    background: rgba(52,199,123,0.35);
+    opacity: 0;
+  }
+  .target-hit.flash {
+    animation: hitpulse 0.45s ease-out;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+  }
+
+  @keyframes hitpulse {
+    0% { opacity: 0.9; transform: translate(-50%, -50%) scale(0.4); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(2.4); }
+  }
+
+  .cam-status {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    padding: 8px 10px;
+    background: linear-gradient(180deg, transparent, rgba(0,0,0,0.75));
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: #d8dde2;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--text-dim);
+    flex-shrink: 0;
+  }
+  .dot.live { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+  .dot.off { background: var(--err); }
+
+  .cam-placeholder {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; color: var(--text-dim); font-size: 13px; text-align: center; padding: 0 24px;
+  }
+
+  button.cam-start {
+    background: var(--accent);
+    color: #191008;
+    border: none;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 14px;
+    padding: 11px 22px;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+
+  /* Barcode log */
+  .log-header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .log-header label.field-label { margin-bottom: 0; }
+  .count {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+  }
+
+  .barcode-list {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    min-height: 120px;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+
+  .barcode-list .empty {
+    padding: 16px 14px;
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+
+  .barcode-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 14px;
+  }
+  .barcode-row:last-child { border-bottom: none; }
+
+  .barcode-row .meta {
+    color: var(--text-dim);
+    font-size: 10.5px;
+    font-family: var(--sans);
+    margin-top: 2px;
+  }
+
+  .barcode-row .remove {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px 6px;
+    flex-shrink: 0;
+  }
+  .barcode-row .remove:hover { color: var(--err); }
+
+  .footer-bar {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 14px 20px calc(14px + env(safe-area-inset-bottom));
+    background: rgba(16,19,23,0.92);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid var(--border);
+  }
+
+  button.submit-btn {
+    width: 100%;
+    padding: 15px;
+    background: var(--accent);
+    color: #191008;
+    border: none;
+    border-radius: 8px;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 15.5px;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+  }
+  button.submit-btn:disabled {
+    background: var(--panel-2);
+    color: var(--text-dim);
+    cursor: not-allowed;
+  }
+
+  .status-msg {
+    font-size: 12.5px;
+    text-align: center;
+    margin-top: 9px;
+    min-height: 16px;
+    color: var(--text-dim);
+  }
+  .status-msg.ok { color: var(--ok); }
+  .status-msg.err { color: var(--err); }
+
+  .beep-toast {
+    position: absolute;
+    top: 10px; right: 10px;
+    background: rgba(52,199,123,0.15);
+    border: 1px solid var(--ok);
+    color: var(--ok);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 5px;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    pointer-events: none;
+  }
+  .beep-toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header>
+    <p class="tag">// SAHA BARKOD OKUMA</p>
+    <h1>Barkod Toplama</h1>
+  </header>
+
+  <section>
+    <label class="field-label" for="customerName">Müşteri ismi</label>
+    <input type="text" id="customerName" placeholder="Örn. Ahmet Yılmaz" autocomplete="off">
+  </section>
+
+  <section>
+    <label class="field-label">Kamera</label>
+    <div class="scanner-wrap" id="scannerWrap">
+      <video id="video" playsinline muted></video>
+      <div class="target-wrap" id="targetWrap" style="display:none;">
+        <div class="target-line">
+          <div class="target-hit" id="targetHit"></div>
+        </div>
+      </div>
+      <div class="beep-toast" id="beepToast">OKUNDU</div>
+      <div class="cam-status" id="camStatus" style="display:none;">
+        <span class="dot live"></span>
+        <span id="camStatusText">Taranıyor…</span>
+      </div>
+      <div class="cam-placeholder" id="camPlaceholder">
+        <span>Kamerayı aç, barkodu ekrandaki çizgiye hizala</span>
+        <button class="cam-start" id="camStartBtn">Kamerayı Aç</button>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="log-header">
+      <label class="field-label">Okunan barkodlar</label>
+      <span class="count" id="barcodeCount">0</span>
+    </div>
+    <div class="barcode-list" id="barcodeList">
+      <div class="empty">Henüz barkod okunmadı.</div>
+    </div>
+  </section>
+</div>
+
+<div class="footer-bar">
+  <button class="submit-btn" id="submitBtn" disabled>Bitir ve Gönder</button>
+  <div class="status-msg" id="statusMsg"></div>
+</div>
+
+<script>
+(function(){
+  const video = document.getElementById('video');
+  const camPlaceholder = document.getElementById('camPlaceholder');
+  const camStartBtn = document.getElementById('camStartBtn');
+  const camStatus = document.getElementById('camStatus');
+  const camStatusText = document.getElementById('camStatusText');
+  const targetWrap = document.getElementById('targetWrap');
+  const targetHit = document.getElementById('targetHit');
+  const beepToast = document.getElementById('beepToast');
+
+  // Where the horizontal target line sits, as a ratio of the video frame height,
+  // and how thick the acceptance band around it is (also a ratio of frame height).
+  const LINE_RATIO = 0.5;
+  const BAND_RATIO = 0.09;
+  const barcodeList = document.getElementById('barcodeList');
+  const barcodeCount = document.getElementById('barcodeCount');
+  const submitBtn = document.getElementById('submitBtn');
+  const statusMsg = document.getElementById('statusMsg');
+  const customerNameInput = document.getElementById('customerName');
+
+  const RECIPIENT_EMAIL = "bunyamindemir@hotmail.com";
+
+  let codes = []; // {value, format, time}
+  let stream = null;
+  let detector = null;
+  let rafId = null;
+  let detecting = false;
+
+  function renderList(){
+    barcodeCount.textContent = codes.length;
+    if (codes.length === 0){
+      barcodeList.innerHTML = '<div class="empty">Henüz barkod okunmadı.</div>';
+    } else {
+      barcodeList.innerHTML = codes.map((c, i) => `
+        <div class="barcode-row" data-idx="${i}">
+          <div>
+            ${escapeHtml(c.value)}
+            <div class="meta">${c.format} · ${c.time}</div>
+          </div>
+          <button class="remove" data-idx="${i}" aria-label="Kaldır">×</button>
+        </div>
+      `).join('');
+    }
+    submitBtn.disabled = codes.length === 0;
+  }
+
+  function escapeHtml(str){
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  barcodeList.addEventListener('click', (e) => {
+    const btn = e.target.closest('.remove');
+    if (!btn) return;
+    const idx = parseInt(btn.dataset.idx, 10);
+    codes.splice(idx, 1);
+    renderList();
+  });
+
+  function flashBeep(){
+    beepToast.classList.add('show');
+    setTimeout(() => beepToast.classList.remove('show'), 500);
+    targetHit.classList.remove('flash');
+    // force reflow so the animation can restart on back-to-back reads
+    void targetHit.offsetWidth;
+    targetHit.classList.add('flash');
+    if (navigator.vibrate) navigator.vibrate(60);
+  }
+
+  function addCode(value, format){
+    if (codes.some(c => c.value === value)) return; // dedupe
+    const time = new Date().toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    codes.push({ value, format, time });
+    renderList();
+    flashBeep();
+  }
+
+  async function startCamera(){
+    statusMsg.textContent = '';
+    statusMsg.className = 'status-msg';
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false
+      });
+    } catch (err) {
+      statusMsg.textContent = 'Kameraya erişilemedi: izin verildiğinden emin olun.';
+      statusMsg.className = 'status-msg err';
+      return;
+    }
+
+    video.srcObject = stream;
+    await video.play();
+
+    camPlaceholder.style.display = 'none';
+    targetWrap.style.display = 'block';
+    camStatus.style.display = 'flex';
+
+    if ('BarcodeDetector' in window) {
+      try {
+        const supported = await window.BarcodeDetector.getSupportedFormats();
+        detector = new window.BarcodeDetector({ formats: supported });
+        camStatusText.textContent = 'Taranıyor…';
+        detecting = true;
+        scanLoopNative();
+        return;
+      } catch (e) {
+        // fall through to unsupported message
+      }
+    }
+
+    camStatusText.textContent = 'Bu tarayıcı canlı barkod taramayı desteklemiyor (Android Chrome önerilir).';
+    camStatus.querySelector('.dot').classList.remove('live');
+    camStatus.querySelector('.dot').classList.add('off');
+  }
+
+  async function scanLoopNative(){
+    if (!detecting) return;
+    try {
+      // Detection runs over the whole camera frame, so a barcode is found no
+      // matter where it sits in the image. We only *accept* (add) a code once
+      // it lines up with the horizontal target line, so the user has a clear,
+      // predictable spot to aim at rather than every code in view firing at once.
+      const barcodes = await detector.detect(video);
+      if (barcodes.length && video.videoHeight){
+        const lineY = video.videoHeight * LINE_RATIO;
+        const band = video.videoHeight * BAND_RATIO;
+        for (const b of barcodes) {
+          const box = b.boundingBox;
+          const top = box.y;
+          const bottom = box.y + box.height;
+          const crossesLine = bottom >= (lineY - band) && top <= (lineY + band);
+          if (crossesLine) {
+            addCode(b.rawValue, b.format);
+          }
+        }
+      }
+    } catch (e) {
+      // ignore transient detection errors
+    }
+    rafId = requestAnimationFrame(scanLoopNative);
+  }
+
+  camStartBtn.addEventListener('click', startCamera);
+
+  function stopCamera(){
+    detecting = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    if (stream) stream.getTracks().forEach(t => t.stop());
+  }
+  window.addEventListener('beforeunload', stopCamera);
+
+  submitBtn.addEventListener('click', async () => {
+    const name = customerNameInput.value.trim();
+    if (!name){
+      statusMsg.textContent = 'Lütfen önce müşteri ismini yazın.';
+      statusMsg.className = 'status-msg err';
+      customerNameInput.focus();
+      return;
+    }
+    if (codes.length === 0){
+      statusMsg.textContent = 'Gönderilecek barkod yok.';
+      statusMsg.className = 'status-msg err';
+      return;
+    }
+
+    submitBtn.disabled = true;
+    statusMsg.textContent = 'Gönderiliyor…';
+    statusMsg.className = 'status-msg';
+
+    const list = codes.map((c, i) => `${i+1}. ${c.value}  (${c.format}, ${c.time})`).join('\n');
+    const bodyText = `Müşteri: ${name}\n\nOkunan barkodlar (${codes.length} adet):\n${list}`;
+    const subject = `Barkod Listesi - ${name}`;
+
+    try {
+      const res = await fetch(`https://formsubmit.co/ajax/${RECIPIENT_EMAIL}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+          _subject: subject,
+          Musteri: name,
+          Barkod_Sayisi: codes.length,
+          Barkodlar: bodyText
+        })
+      });
+
+      if (res.ok) {
+        statusMsg.textContent = `Gönderildi: ${RECIPIENT_EMAIL} adresine iletildi.`;
+        statusMsg.className = 'status-msg ok';
+      } else {
+        throw new Error('Sunucu hatası');
+      }
+    } catch (e) {
+      // fallback: open the user's mail app pre-filled
+      const mailto = `mailto:${RECIPIENT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
+      window.location.href = mailto;
+      statusMsg.textContent = 'Otomatik gönderim başarısız oldu, mail uygulaması açıldı.';
+      statusMsg.className = 'status-msg err';
+    } finally {
+      submitBtn.disabled = codes.length === 0;
+    }
+  });
+
+  renderList();
+})();
+</script>
+
+</body>
+</html>
