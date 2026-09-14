@@ -590,15 +590,16 @@
 
   // ---------------- barcode log ----------------
   function renderList(){
-    barcodeCount.textContent = codes.length;
+    const totalQty = codes.reduce((sum, c) => sum + c.qty, 0);
+    barcodeCount.textContent = codes.length === totalQty ? codes.length : `${codes.length} · ${totalQty} adet`;
     if (codes.length === 0){
       barcodeList.innerHTML = '<div class="empty">Henüz barkod okunmadı.</div>';
     } else {
       barcodeList.innerHTML = codes.map((c, i) => `
         <div class="barcode-row" data-idx="${i}">
           <div>
-            ${escapeHtml(c.value)}
-            <div class="meta">${c.format} · ${c.time}</div>
+            ${escapeHtml(c.value)}${c.qty > 1 ? ` <span style="color:var(--accent)">× ${c.qty}</span>` : ''}
+            <div class="meta">${c.format} · son okuma ${c.time}</div>
           </div>
           <button class="remove" data-idx="${i}" aria-label="Kaldır">×</button>
         </div>
@@ -632,11 +633,22 @@
     if (navigator.vibrate) navigator.vibrate(60);
   }
 
+  const RESCAN_COOLDOWN_MS = 1500; // minimum gap before the same code can be re-counted
+
   function addCode(value, format){
     if (!value) return;
-    if (codes.some(c => c.value === value)) return; // dedupe
     const time = new Date().toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-    codes.push({ value, format: format || 'BARKOD', time });
+    const now = Date.now();
+    const existing = codes.find(c => c.value === value);
+
+    if (existing) {
+      if (now - existing.lastTs < RESCAN_COOLDOWN_MS) return; // still the same continuous hold, ignore
+      existing.qty += 1;
+      existing.lastTs = now;
+      existing.time = time;
+    } else {
+      codes.push({ value, format: format || 'BARKOD', time, qty: 1, lastTs: now });
+    }
     renderList();
     if (scannerOverlay.style.display !== 'none') flashHit(value);
   }
@@ -899,8 +911,9 @@
     statusMsg.textContent = 'Gönderiliyor…';
     statusMsg.className = 'status-msg';
 
-    const list = codes.map((c, i) => `${i+1}. ${c.value}  (${c.format}, ${c.time})`).join('\n');
-    const bodyText = `Müşteri: ${name}\n\nOkunan barkodlar (${codes.length} adet):\n${list}`;
+    const totalQty = codes.reduce((sum, c) => sum + c.qty, 0);
+    const list = codes.map((c, i) => `${i+1}. ${c.value}${c.qty > 1 ? `  × ${c.qty}` : ''}  (${c.format}, son okuma ${c.time})`).join('\n');
+    const bodyText = `Müşteri: ${name}\n\nOkunan barkodlar (${codes.length} çeşit, ${totalQty} adet):\n${list}`;
     const subject = `Barkod Listesi - ${name}`;
 
     try {
