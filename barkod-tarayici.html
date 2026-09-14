@@ -275,15 +275,28 @@
     padding: 0 24px;
   }
 
-  .ov-frame {
+  .ov-center {
     position: absolute;
     top: 50%; left: 50%;
     transform: translate(-50%, -50%);
-    width: min(72vw, 300px);
-    height: min(72vw, 300px);
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+    width: min(88vw, 380px);
+  }
+
+  /* Wide rectangular frame, matching an EAN-13's real proportions (~2.2:1).
+     A square frame clips the left/right edges of the barcode the moment a
+     person fills it to get a close, sharp shot — which is exactly what
+     people naturally try to do — so the frame shape has to match the code. */
+  .ov-frame {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 2.2 / 1;
     border: 2px solid rgba(255,255,255,0.85);
     border-radius: 14px;
-    z-index: 4;
     box-shadow: 0 0 0 2000px rgba(0,0,0,0.42);
   }
 
@@ -321,10 +334,6 @@
   }
 
   .ov-manual {
-    position: absolute;
-    left: 50%;
-    top: calc(50% + min(72vw, 300px) / 2 + 26px);
-    transform: translateX(-50%);
     z-index: 5;
     background: transparent;
     border: 1.5px solid rgba(255,255,255,0.85);
@@ -377,7 +386,7 @@
   .ov-toast {
     position: absolute;
     left: 50%;
-    top: calc(50% - min(72vw, 300px) / 2 - 46px);
+    top: calc(120px + env(safe-area-inset-top, 0));
     transform: translateX(-50%);
     z-index: 6;
     background: rgba(52,199,123,0.92);
@@ -500,16 +509,17 @@
 
   <button class="ov-close" id="ovClose" aria-label="Kapat">×</button>
   <div class="ov-status" id="ovStatus">başlatılıyor…</div>
-  <div class="ov-hint">Barkodu kare içine getirin</div>
-
-  <div class="ov-frame">
-    <div class="ov-line"></div>
-    <div class="ov-hit" id="ovHit"></div>
-  </div>
+  <div class="ov-hint">Barkodu dikdörtgenin içine, tamamı görünecek şekilde yerleştirin</div>
 
   <div class="ov-toast" id="ovToast"></div>
 
-  <button class="ov-manual" id="ovManualBtn">Barkodu manuel gir</button>
+  <div class="ov-center">
+    <div class="ov-frame">
+      <div class="ov-line"></div>
+      <div class="ov-hit" id="ovHit"></div>
+    </div>
+    <button class="ov-manual" id="ovManualBtn">Barkodu manuel gir</button>
+  </div>
 
   <div class="ov-bottom-bar">
     <button class="ov-icon-btn" id="torchBtn" aria-label="Flaş" disabled>
@@ -736,9 +746,10 @@
     return zxingFormatNames[formatNum] || 'BARKOD';
   }
 
-  // Crop the video down to exactly the on-screen square frame, upscaled,
-  // so small barcodes get decoded from a bigger, cleaner image instead of
-  // the whole (mostly irrelevant) camera frame.
+  // Crop the video down to exactly the on-screen frame, upscaled, so small
+  // barcodes get decoded from a bigger, cleaner image instead of the whole
+  // (mostly irrelevant) camera frame. Keeps the frame's real aspect ratio —
+  // squashing a wide rectangle into a square canvas would distort the bars.
   function updateCropCanvas(){
     const vw = video.videoWidth, vh = video.videoHeight;
     if (!vw || !vh) return false;
@@ -749,7 +760,7 @@
     const offsetY = (vh * scale - viewportH) / 2;
 
     const rect = ovFrame.getBoundingClientRect();
-    const PAD = 0.18; // extra margin around the visible square, as a fraction of its size
+    const PAD = 0.18; // extra margin around the visible frame, as a fraction of its size
     const padLeft = rect.left - rect.width * PAD;
     const padTop = rect.top - rect.height * PAD;
     const padW = rect.width * (1 + 2 * PAD);
@@ -760,10 +771,17 @@
     const nativeW = padW / scale;
     const nativeH = padH / scale;
 
-    const OUT = 480; // upscaled output size fed to the decoder
-    if (scanCanvas.width !== OUT) { scanCanvas.width = OUT; scanCanvas.height = OUT; }
+    const OUT_MAX = 640; // upscaled longest side fed to the decoder
+    const aspect = nativeH / nativeW;
+    const outW = aspect <= 1 ? OUT_MAX : Math.round(OUT_MAX / aspect);
+    const outH = aspect <= 1 ? Math.round(OUT_MAX * aspect) : OUT_MAX;
+
+    if (scanCanvas.width !== outW || scanCanvas.height !== outH) {
+      scanCanvas.width = outW;
+      scanCanvas.height = outH;
+    }
     const ctx = scanCanvas.getContext('2d');
-    ctx.drawImage(video, nativeX, nativeY, nativeW, nativeH, 0, 0, OUT, OUT);
+    ctx.drawImage(video, nativeX, nativeY, nativeW, nativeH, 0, 0, outW, outH);
     return true;
   }
 
